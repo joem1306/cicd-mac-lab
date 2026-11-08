@@ -1,1 +1,6 @@
-{"version":"1.0.0","headline":"Welcome to the BLUE release","message":"This is the original website. All three clients start here.","color":"#2563eb"}
+{
+  "version": "2.0.0",
+  "headline": "Welcome to the GREEN release!",
+  "message": "This is the new checkout experience. Canary is live!",
+  "color": "#16a34a"
+}
