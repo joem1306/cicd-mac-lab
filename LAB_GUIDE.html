@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CI/CD on a Mac M4 — Hands-on Lab Guide</title>
+<style>
+:root{color-scheme:light;--ink:#16213a;--muted:#56637b;--blue:#3157db;--border:#dce3f0;--bg:#f5f7fc}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);font:16px/1.65 system-ui,-apple-system,Segoe UI,sans-serif;color:var(--ink)}
+header{background:linear-gradient(125deg,#121d45,#374ec0);color:white;padding:65px max(24px,calc((100vw - 1040px)/2)) 56px}header h1{font-size:clamp(2.2rem,5vw,4rem);line-height:1.12;margin:0 0 14px}header p{max-width:800px;font-size:1.15rem;color:#e2e8ff}.pill{display:inline-block;border:1px solid #93a7ef;border-radius:99px;padding:5px 13px;margin:5px 5px 0 0;font-size:.83rem}
+main{max-width:1040px;margin:0 auto;padding:24px 22px 80px}.panel,section{background:white;border:1px solid var(--border);border-radius:16px;padding:25px 30px;margin:20px 0;box-shadow:0 5px 24px #1d35600b}h2{margin:0 0 16px;font-size:1.65rem}h3{margin:26px 0 8px}p{margin:10px 0 16px}.small,small{color:var(--muted)}a{color:#2348ca}code{font: .91em ui-monospace,SFMono-Regular,Menlo,monospace;background:#eff2fa;padding:2px 5px;border-radius:4px}pre{position:relative;overflow:auto;border-radius:10px;background:#111a2c;color:#e8efff;padding:18px;line-height:1.55;font-size:.88rem}pre code{background:none;padding:0;color:inherit}button.copy{float:right;background:#334c80;color:white;border:0;padding:6px 10px;border-radius:6px;cursor:pointer}.note{border-left:4px solid #4b6de5;padding:12px 18px;background:#eef2ff;border-radius:6px;margin:16px 0}.warning{border-left-color:#e79a30;background:#fff7e8}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.client{border:2px solid #d7e0f2;padding:15px;border-radius:12px;text-align:center}.client b{display:block;font-size:1.25rem}.blue{color:#2563eb}.green{color:#16a34a}.step{display:inline-flex;align-items:center;justify-content:center;background:#334bd2;color:white;width:30px;height:30px;border-radius:50%;font-weight:bold;margin-right:10px}.check{display:flex;gap:9px;align-items:flex-start;padding:6px 0}.check input{margin-top:6px;accent-color:#3255d7}.diagram{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center;padding:20px 0}.diagram span{padding:12px 15px;border-radius:9px;background:#eaf0ff;font-weight:650;text-align:center}.diagram em{font-style:normal;color:#7081a0}.tablewrap{overflow:auto}table{border-collapse:collapse;width:100%}th,td{padding:11px 13px;border-bottom:1px solid #e4e9f2;text-align:left;vertical-align:top}th{background:#f3f6fb}nav{display:flex;flex-wrap:wrap;gap:9px}nav a{background:#e8eeff;border-radius:9px;padding:7px 11px;text-decoration:none;font-size:.9rem}.stage{border-left:3px solid #d5def8;padding-left:18px;margin:24px 0}footer{color:#64748b;text-align:center;padding:20px}
+@media(max-width:650px){.grid{grid-template-columns:1fr}.panel,section{padding:19px}header{padding:45px 22px}}
+@media print{header{padding:20px}section{break-inside:avoid}pre{white-space:pre-wrap}nav,button.copy{display:none}}
+</style></head><body>
+<header><div class="pill">FREE TOOLS</div><div class="pill">APPLE SILICON M4</div><div class="pill">DOCKER DESKTOP</div><div class="pill">GITHUB ACTIONS</div>
+<h1>From a code change<br>to a canary release</h1>
+<p>A practical, beginner-friendly CI/CD lab. Build a tiny website, test it on GitHub, publish a Docker image, deploy it locally, route one simulated client to the new version, then promote or roll back.</p>
+</header><main>
+<div class="panel"><h2>Lab map</h2><nav>
+<a href="#overview">Architecture</a><a href="#prepare">1. Prepare</a><a href="#local">2. Local v1</a><a href="#github">3. GitHub</a><a href="#ci">4. CI + registry</a><a href="#release">5. Change v2</a><a href="#canary">6. Canary</a><a href="#promote">7. Promote</a><a href="#rollback">8. Rollback</a><a href="#troubleshoot">Troubleshooting</a><a href="#understand">Behind the scenes</a>
+</nav></div>
+<section id="overview"><h2>What you will build</h2>
+<div class="diagram"><span>Mac: edit code</span><em>→</em><span>GitHub: push</span><em>→</em><span>Actions: test + build</span><em>→</em><span>GHCR: store image</span><em>→</em><span>Docker Desktop: run</span></div>
+<p><strong>Five running containers:</strong> <code>stable</code> (old website), <code>canary</code> (new website), and three Nginx reverse-proxy containers that act as three <em>simulated clients</em>. Open each client on your Mac in a browser.</p>
+<div class="grid"><div class="client"><b>Client 1</b><code>localhost:8081</code><p>Canary first</p></div><div class="client"><b>Client 2</b><code>localhost:8082</code><p>Stable until promotion</p></div><div class="client"><b>Client 3</b><code>localhost:8083</code><p>Stable until promotion</p></div></div>
+<div class="note"><strong>Honest simulation:</strong> One out of three clients = 33% of these three simulated client endpoints, <em>not</em> 10% of real users. It demonstrates deterministic client routing. Real 10% request-weighted or user-sticky canaries require a traffic router or feature-flag service; see the optional extension.</div>
+<p><strong>Costs:</strong> Docker Desktop is free for qualifying personal use; GitHub Free and GitHub-hosted Actions have usage limits. This tiny public-repository exercise should fit within free allowances, but review your account's current billing/usage settings. No paid cloud hosting is needed.</p>
+<p><strong>Credentials:</strong> This lab has no application login. The sample <code>admin / pass123!</code> credentials are deliberately <em>not</em> used: publishing fixed credentials in a public repository would be unsafe. GitHub authentication uses your own account and GitHub's built-in workflow token.</p></section>
+<section id="prepare"><h2><span class="step">1</span> Prepare your Mac</h2>
+<p>Unzip the kit, then open <strong>Terminal</strong> in the extracted <code>cicd-mac-lab</code> directory. You can type <code>cd </code> and drag the folder into Terminal to insert its path.</p>
+<pre><code>docker version
+docker compose version
+git --version
+node --version</code></pre>
+<p>You need Docker Desktop running, Git, and Node.js 22+ for local testing. If Node.js is missing, install an official LTS release from <a href="https://nodejs.org/" target="_blank" rel="noreferrer">nodejs.org</a>. GitHub Actions runs Node.js itself, so local Node is only needed to run the tests on your Mac.</p>
+<p>Apple M4 is ARM64. The workflow builds both <code>linux/arm64</code> and <code>linux/amd64</code> image variants, so Docker Desktop on your M4 can pull the ARM64 variant.</p>
+<div class="check"><input type="checkbox"> <span>Docker Desktop engine is running and both Docker commands succeed.</span></div>
+<div class="check"><input type="checkbox"> <span>I have the unzipped kit open in Terminal.</span></div></section>
+<section id="local"><h2><span class="step">2</span> Start the original website (v1)</h2>
+<p>Run these commands from the kit root:</p>
+<pre><code>npm test
+./scripts/lab.sh init
+./scripts/lab.sh status</code></pre>
+<p>The <code>init</code> command builds a local Docker image and starts the five containers with Docker Compose.</p>
+<div class="grid"><div class="client"><b><a href="http://localhost:8081">Client 1 ↗</a></b><p class="blue">BLUE v1.0.0</p></div><div class="client"><b><a href="http://localhost:8082">Client 2 ↗</a></b><p class="blue">BLUE v1.0.0</p></div><div class="client"><b><a href="http://localhost:8083">Client 3 ↗</a></b><p class="blue">BLUE v1.0.0</p></div></div>
+<p><strong>Expected:</strong> all three browser URLs display the blue <code>VERSION 1.0.0</code> site. If port 8081/8082/8083 is already occupied, stop the conflicting service or adjust the host ports in <code>compose.yaml</code>.</p>
+<p>Look inside Docker Desktop → Containers: you'll see a Compose project with <code>stable</code>, <code>canary</code>, and <code>client1</code>–<code>client3</code>.</p>
+<div class="note"><strong>Concept:</strong> <code>client1</code> is not a browser. It is an Nginx proxy listening on port 8081. Your browser sends requests to that proxy; the proxy forwards them to the stable application container over Docker's private network.</div></section>
+<section id="github"><h2><span class="step">3</span> Prepare your personal GitHub repository</h2>
+<ol>
+<li>Sign in at <a href="https://github.com/new" target="_blank" rel="noreferrer">github.com/new</a>.</li>
+<li>Create a <strong>public</strong> repository named <code>cicd-mac-lab</code> under your personal account. Public is simplest for the free exercise and public container-image pulls.</li>
+<li><strong>Do not</strong> initialize it with a README, license, or .gitignore: the downloaded kit already contains files.</li>
+<li>Choose <strong>Create repository</strong>. Copy the HTTPS URL, for example <code>https://github.com/YOUR_USERNAME/cicd-mac-lab.git</code>.</li>
+<li>On GitHub, visit <strong>Settings → Actions → General</strong>. Ensure GitHub Actions is permitted. Under <strong>Workflow permissions</strong>, if available, choose <strong>Read and write permissions</strong>; the workflow also explicitly requests <code>packages: write</code>. Organization policies may override these settings.</li>
+</ol>
+<p>In Terminal, from the kit root:</p>
+<pre><code>git init
+git branch -M main
+git add .
+git commit -m "Initial blue website and CI/CD lab"
+git remote add origin https://github.com/YOUR_USERNAME/cicd-mac-lab.git
+git push -u origin main</code></pre>
+<p>Replace <code>YOUR_USERNAME</code> with your actual GitHub username. GitHub may ask you to authenticate using a browser or credential helper. <strong>Your GitHub account password is not accepted as an HTTPS Git password.</strong> The easiest option is GitHub CLI (<code>gh auth login</code>) or an installed Git credential manager; otherwise use a personal access token with suitable repository permissions. Never put tokens into code or the public repository.</p>
+<p><strong>Optional but educational:</strong> after your first successful workflow, configure <strong>Settings → Branches / Rulesets</strong> to require the <code>test</code> status check before merging pull requests. Ruleset availability and enforcement vary by repository type and GitHub plan.</p>
+<div class="check"><input type="checkbox"> <span>The GitHub repository shows <code>server.js</code>, <code>Dockerfile</code>, <code>compose.yaml</code>, and <code>.github/workflows/ci.yml</code>.</span></div></section>
+<section id="ci"><h2><span class="step">4</span> Watch CI build and publish v1</h2>
+<p>Open your repository's <strong>Actions</strong> tab → <strong>Test, build and publish image</strong> → latest run.</p>
+<p>There are two jobs: <code>test</code> executes the Node test suite on a GitHub-hosted Linux runner; <code>publish</code> waits for tests to pass, then Buildx builds the container image and pushes it to GitHub Container Registry (GHCR).</p>
+<p>On your Mac, get the full 40-character commit SHA:</p>
+<pre><code>git rev-parse HEAD</code></pre>
+<p>The image is tagged as <code>ghcr.io/YOUR_USERNAME/cicd-mac-lab:sha-FULL_SHA</code>. This lab uses a commit-specific tag to make version selection easy. For stronger artifact immutability in real production, deploy by the image's SHA-256 digest.</p>
+<h3>Make the image public (important)</h3>
+<p>GHCR packages are often initially private, even when the GitHub repository is public. On GitHub, go to your profile → <strong>Packages</strong> → <code>cicd-mac-lab</code> → <strong>Package settings</strong> → <strong>Change visibility</strong> → <strong>Public</strong>. If the package is not visible yet, wait until the publish job finishes. Confirm the package is public before the next command.</p>
+<p>Now deploy the image that GitHub built (not your local image):</p>
+<pre><code>./scripts/lab.sh deploy-stable YOUR_USERNAME cicd-mac-lab FULL_SHA
+./scripts/lab.sh status</code></pre>
+<p>Replace both placeholders. This pulls the GHCR image, changes <code>STABLE_IMAGE</code> in your local <code>.env</code>, recreates the stable container, and reloads the three proxies. All three URLs should still show blue v1.</p>
+<div class="note"><strong>Checkpoint:</strong> You have now completed real CI (GitHub-hosted tests and build) and a manual CD deployment (your Mac pulling and running the published image). GitHub cannot directly reach Docker Desktop on your private laptop by default; the lab intentionally makes the local deploy command visible rather than pretending it is automatic.</div></section>
+<section id="release"><h2><span class="step">5</span> Make a visible code change for v2</h2>
+<p>Open <code>version.json</code> in any text editor. Replace the entire file with:</p>
+<pre><code>{
+  "version": "2.0.0",
+  "headline": "Welcome to the GREEN release!",
+  "message": "This is the new checkout experience. Canary is live!",
+  "color": "#16a34a"
+}</code></pre>
+<p>Save, then create a feature branch and push it:</p>
+<pre><code>git switch -c feature/green-release
+npm test
+git add version.json
+git commit -m "Change website to green v2"
+git push -u origin feature/green-release</code></pre>
+<p>On GitHub, click <strong>Compare & pull request</strong>, create a PR targeting <code>main</code>, and inspect the Actions run. A PR runs tests but <strong>does not publish an image</strong>. Merge the PR only after tests pass.</p>
+<p>Back on your Mac:</p>
+<pre><code>git switch main
+git pull --ff-only origin main
+git rev-parse HEAD</code></pre>
+<p>Wait for the new <strong>main</strong> Actions run to finish successfully, then copy the new full SHA. The new published image is v2.</p>
+<div class="check"><input type="checkbox"> <span>The PR tests passed.</span></div>
+<div class="check"><input type="checkbox"> <span>The merged main workflow published the green v2 image.</span></div>
+<div class="note warning"><strong>Deliberate failure experiment:</strong> Before merging, try changing <code>version</code> to <code>banana</code>, then run <code>npm test</code>. The validation test fails. Restore <code>2.0.0</code> and re-run. This demonstrates why CI can block broken changes.</div></section>
+<section id="canary"><h2><span class="step">6</span> Deploy v2 to canary and expose one client</h2>
+<p>First pull the new GitHub-built image into the <code>canary</code> container:</p>
+<pre><code>./scripts/lab.sh deploy-canary YOUR_USERNAME cicd-mac-lab NEW_FULL_SHA
+./scripts/lab.sh status</code></pre>
+<p><strong>At this point all clients should still show blue v1</strong>: the canary container exists, but nobody is routed to it yet. This is an important distinction between <em>deploying</em> and <em>releasing</em>.</p>
+<p>Now switch only client 1:</p>
+<pre><code>./scripts/lab.sh route-canary
+./scripts/lab.sh status</code></pre>
+<div class="grid"><div class="client"><b><a href="http://localhost:8081">Client 1 ↗</a></b><p class="green">GREEN v2.0.0</p></div><div class="client"><b><a href="http://localhost:8082">Client 2 ↗</a></b><p class="blue">BLUE v1.0.0</p></div><div class="client"><b><a href="http://localhost:8083">Client 3 ↗</a></b><p class="blue">BLUE v1.0.0</p></div></div>
+<p>Open the three URLs side by side. Refresh them. Look at <code>routing/client1.conf</code>: its <code>proxy_pass</code> now points to <code>http://canary:3000</code>, while clients 2 and 3 still point to <code>http://stable:3000</code>.</p>
+<p>To manually smoke-test the versions:</p>
+<pre><code>curl -s http://localhost:8081/api/info
+curl -s http://localhost:8082/api/info
+curl -s http://localhost:8083/api/info</code></pre>
+<p><strong>Observation exercise:</strong> leave the canary exposed for a few minutes, refresh it, and inspect logs:</p>
+<pre><code>docker compose logs --tail=30 canary
+docker compose ps</code></pre>
+<p>This lab does <em>not</em> implement automated metrics or a three-hour promotion gate. Your manual checks are the release gate. The objective is to understand routing before adding automation.</p>
+<p>Try reverting the canary exposure without changing any image:</p>
+<pre><code>./scripts/lab.sh route-stable</code></pre>
+<p>Client 1 should return to blue. Then use <code>./scripts/lab.sh route-canary</code> to restore the canary for the next step.</p></section>
+<section id="promote"><h2><span class="step">7</span> Promote v2 to all three clients</h2>
+<p>When you've verified client 1 is healthy, run:</p>
+<pre><code>./scripts/lab.sh promote
+./scripts/lab.sh status</code></pre>
+<p>The script saves the previous stable image in <code>.previous-stable-image</code>, changes the stable service to the v2 image, and points client 1 back to stable. Now all three URLs should show <strong>GREEN v2.0.0</strong>.</p>
+<div class="grid"><div class="client"><b>Client 1</b><p class="green">GREEN v2</p></div><div class="client"><b>Client 2</b><p class="green">GREEN v2</p></div><div class="client"><b>Client 3</b><p class="green">GREEN v2</p></div></div>
+<p><strong>What changed?</strong> We did not rebuild the image. We promoted the already-tested canary image to stable and changed the proxy routing. That's the difference between creating an artifact and deploying it.</p></section>
+<section id="rollback"><h2><span class="step">8</span> Practice rollback</h2>
+<p>Pretend users report a problem with v2. Restore the saved previous stable image:</p>
+<pre><code>./scripts/lab.sh rollback
+./scripts/lab.sh status</code></pre>
+<p>All three clients should show <strong>BLUE v1.0.0</strong> again. The v2 canary container may still exist, but the proxies now route to the restored stable service.</p>
+<p>To stop the lab:</p>
+<pre><code>./scripts/lab.sh stop</code></pre>
+<div class="note warning"><strong>Rollback scope:</strong> This restores the previous <em>application image</em> and routes, not database state. This demo has no database. In real systems, database migrations and external side effects require separate rollback strategies.</div></section>
+<section id="understand"><h2>Who does what? Trace the exact mechanism</h2>
+<div class="tablewrap"><table><thead><tr><th>Question</th><th>Component</th><th>Evidence in this kit</th></tr></thead><tbody>
+<tr><td>Who detects a Git push?</td><td>GitHub Actions event trigger</td><td><code>.github/workflows/ci.yml</code> → <code>on: push</code></td></tr>
+<tr><td>Who runs the tests?</td><td>GitHub-hosted Ubuntu runner + Node test runner</td><td><code>npm test</code> → <code>test.js</code></td></tr>
+<tr><td>Who builds the container?</td><td>Docker Buildx / BuildKit</td><td><code>docker/build-push-action</code> + <code>Dockerfile</code></td></tr>
+<tr><td>Where is the image stored?</td><td>GitHub Container Registry</td><td><code>ghcr.io/OWNER/REPO:sha-SHA</code></td></tr>
+<tr><td>Who pulls the image to my Mac?</td><td>Your deployment script invokes Docker Engine</td><td><code>scripts/lab.sh</code> → <code>docker pull</code></td></tr>
+<tr><td>Who creates the running containers?</td><td>Docker Compose + Docker Engine</td><td><code>compose.yaml</code> and <code>docker compose up</code></td></tr>
+<tr><td>Who decides which version each client sees?</td><td>Nginx reverse proxy</td><td><code>routing/client*.conf</code> → <code>proxy_pass</code></td></tr>
+<tr><td>Who decides whether canary is healthy?</td><td>You, manually, in this introductory lab</td><td>Browser, <code>curl</code>, Docker logs, <code>status</code></td></tr>
+<tr><td>Who promotes / rolls back?</td><td>Your script invokes Docker and reloads Nginx</td><td><code>promote</code> / <code>rollback</code></td></tr>
+</tbody></table></div>
+<h3>Optional next lab: real 10% of traffic</h3>
+<p>Replace the three static client proxies with a traffic router that supports weighted backends (for example Traefik with weighted services, or a suitably configured Nginx upstream). Send 1,000 requests and count how many reach v2. Then add Prometheus metrics, a threshold, and an automatic promotion/rollback controller. That is a <strong>separate, more advanced lab</strong>; this kit intentionally teaches one-client canary routing first.</p>
+<h3>Optional next lab: fully automatic local deployment</h3>
+<p>Install a <em>self-hosted GitHub Actions runner</em> on your Mac, or run a local agent that polls your image registry. Such a runner could execute the deployment script after CI passes. It is more powerful but carries security risks, especially with public repositories and untrusted pull requests. Do not expose your Mac's Docker socket to untrusted CI jobs.</p></section>
+<section id="troubleshoot"><h2>Troubleshooting</h2>
+<h3>GitHub Actions publish fails: permission denied</h3>
+<p>Check the workflow has <code>packages: write</code> and repository Actions permissions permit publishing. Check the Actions job logs. GHCR package linkage/ownership permissions can also affect writes.</p>
+<h3><code>docker pull</code> says denied or unauthorized</h3>
+<p>Confirm the Actions publish job succeeded, you used the exact full SHA from the <strong>main</strong> commit, and the GHCR package was changed to <strong>public</strong>. The image name must be lowercase; the script lowercases owner and repo.</p>
+<h3>One of the browser URLs returns 502</h3>
+<p>Run <code>docker compose ps</code>, then <code>docker compose logs stable canary client1</code>. Check whether the backend app started and whether you changed a proxy config. Try <code>./scripts/lab.sh route-stable</code>.</p>
+<h3>All clients show the same version after canary routing</h3>
+<p>Check that <code>CANARY_IMAGE</code> and <code>STABLE_IMAGE</code> differ in <code>.env</code>. Confirm you used the <em>new</em> SHA for the canary. Refresh the browser or use the no-cache <code>/api/info</code> endpoint.</p>
+<h3>Git push asks for a password</h3>
+<p>GitHub no longer accepts the account password for Git-over-HTTPS authentication. Use <a href="https://cli.github.com/" target="_blank" rel="noreferrer">GitHub CLI</a> and <code>gh auth login</code>, a credential helper, or a properly scoped personal access token.</p>
+<h3>Mac ARM architecture mismatch</h3>
+<p>Wait for the multi-platform publish job to finish. The workflow publishes both ARM64 and AMD64 variants; inspect the image manifest if necessary. Local <code>docker build</code> on your M4 normally produces an ARM64 image.</p>
+<h3>Reset the whole local lab</h3>
+<pre><code>./scripts/lab.sh stop
+rm -f .env .previous-stable-image
+git restore routing/
+./scripts/lab.sh init</code></pre>
+<p>Note: <code>git restore routing/</code> discards your local proxy-routing edits. The kit doesn't delete your GitHub repository or published packages.</p></section>
+<footer>CI/CD Mac Lab · self-contained HTML guide · no server required to read this file</footer>
+</main>
+<script>document.querySelectorAll('pre').forEach(pre=>{const b=document.createElement('button');b.className='copy';b.textContent='Copy';b.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(pre.querySelector('code').innerText);b.textContent='Copied!';setTimeout(()=>b.textContent='Copy',1200)}catch{b.textContent='Select text'}});pre.prepend(b)})</script>
+</body></html>

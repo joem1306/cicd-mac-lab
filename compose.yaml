@@ -1,0 +1,32 @@
+services:
+  stable:
+    image: ${STABLE_IMAGE:-cicd-lab:local}
+    restart: unless-stopped
+    networks: [lab]
+  canary:
+    image: ${CANARY_IMAGE:-cicd-lab:local}
+    restart: unless-stopped
+    networks: [lab]
+  client1:
+    image: nginx:1.27-alpine
+    ports: ["127.0.0.1:8081:80"]
+    volumes:
+      - ./routing/client1.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [stable, canary]
+    networks: [lab]
+  client2:
+    image: nginx:1.27-alpine
+    ports: ["127.0.0.1:8082:80"]
+    volumes:
+      - ./routing/client2.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [stable]
+    networks: [lab]
+  client3:
+    image: nginx:1.27-alpine
+    ports: ["127.0.0.1:8083:80"]
+    volumes:
+      - ./routing/client3.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on: [stable]
+    networks: [lab]
+networks:
+  lab:
